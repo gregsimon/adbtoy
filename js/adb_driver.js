@@ -131,8 +131,13 @@ function adb_msg_sent() {
     });
 }
 
+// TODO : move this somewhere
+// openssl genrsa -out mykey.pem 256
 var rsa = new RSAKey();
-rsa.readPrivateKeyFromPEMString("chrome.usb.adb");
+rsa.readPrivateKeyFromPEMString("MIGrAgEAAiEA2oyeEtkg/uWhB15lN+xN93OEcMOcbkk+V9yS9kgz4l8CAwEAAQIh\
+ALAFcYtcteaWrAtzS7Ku8FtP+CqD03kt0nrKLGBVY44BAhEA7fmn7by2KnjY5nCg\
+QqHgsQIRAOsaStVrBkGidPemvzzhOA8CED+jwgrLqpOVGbwWZmUrUSECEDe9ahSj\
+ZT5WeAjnPdv/Qb0CEQDYYWpU1WHug8luLiBvvk2I");
 
 // This is the entry point for ALL incoming messages.
 // The state machine decides what to do here.
@@ -143,9 +148,11 @@ function adb_process_incoming_msg(msg) {
       if (msg.arg0 == 1) {
         // data is a random token that the receipient (us) can sign with a 
         // private key. We'll sign and send back! This is a 256
-        var signed = rsa.signWithSHA256(msg.body, priv_key);
-        adb_log("signed == "+signed);
-        //adb_queue_outgoing_msg(A_AUTH, 2, 0, signed);
+        var signed = rsa.signString(msg.body, "sha256");
+        adb_log("signed -> "+signed);
+        adb_queue_outgoing_msg(A_AUTH, 2, 0, signed);
+
+        // 97827d3a071b87b1fdd1e1c01e38f6d46530ac2e1253f1995ed3ec4dde01e029
       } else {
 
       }
