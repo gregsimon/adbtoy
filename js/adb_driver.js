@@ -17,7 +17,7 @@ var A_AUTH = 0x48545541;
 
 // There are two state machines implemented here. One is for sending/receiving
 // the messages since there are multiple bulk transfers involved on each side.
-// The other state machine is for managing the connection with the remote 
+// The other state machine is for managing the connection with the remote
 // device (e.g.,  dealing with AUTH, etc.)
 
 // Message SM
@@ -51,22 +51,22 @@ function adb_driver_init(vendorId, productId) {
   sm_c = C_SM_DISCONNECTED;
 
   // attempt to connect a device.
-  chrome.permissions.request( 
+  chrome.permissions.request(
       {permissions: [
-          {'usbDevices': [{'vendorId': device.vendorId, 
+          {'usbDevices': [{'vendorId': device.vendorId,
                 "productId": device.productId}] }
-       ]}, 
+       ]},
        function(result) {
-        if (result) { 
+        if (result) {
           adb_log('App was granted the "usbDevices" permission.');
           chrome.usb.findDevices(
-              { "vendorId": device.vendorId, 
+              { "vendorId": device.vendorId,
                 "productId": device.productId},
              adb_driver_init2);
         } else {
           adb_log('App was NOT granted the "usbDevices" permission.');
         }
-    });  
+    });
 }
 
 function adb_driver_init2(devices) {
@@ -76,8 +76,8 @@ function adb_driver_init2(devices) {
   }
 
   // ok we got a device, set it up.
-  adb_log(devices.length+" device(s) found, connected : productId=0x" + 
-        devices[0].productId.toString(16) + 
+  adb_log(devices.length+" device(s) found, connected : productId=0x" +
+        devices[0].productId.toString(16) +
         " vendorId=0x"+devices[0].vendorId.toString(16));
   device.device = devices[0];
 
@@ -94,7 +94,7 @@ function adb_driver_init3() {
   // Now we are connected to the usb interface we want on the device.
   sm_c = C_SM_CONNECTED;
 
-  // send a CONNECTION message to the device to say hello. 
+  // send a CONNECTION message to the device to say hello.
   // The callback for this will be handlded by the singleton
   // message receiver which will process the state machine.
 
@@ -109,7 +109,7 @@ function adb_driver_destroy() {
 // Use the SM to find out what to do next.
 function adb_msg_sent() {
   // actually, we'll just queue a listen here.
-  chrome.usb.bulkTransfer(device.device, 
+  chrome.usb.bulkTransfer(device.device,
     {direction:'in', endpoint:0x83, length:24}, function(uevent) {
       // we should have gotten the header.
       //adb_log("get header  result="+uevent.resultCode+"... "+uevent.data.byteLength+"bytes");
@@ -117,7 +117,7 @@ function adb_msg_sent() {
 
       // now phase 2 -- receive the bulk transfer for the boyd.
       if (msg.bodySize > 0) {
-        chrome.usb.bulkTransfer(device.device, 
+        chrome.usb.bulkTransfer(device.device,
           {direction:'in', endpoint:0x83, length:msg.bodySize},
           function(uevent) {
             msg.body = uevent.data;
@@ -133,11 +133,45 @@ function adb_msg_sent() {
 
 // TODO : move this somewhere
 // openssl genrsa -out mykey.pem 256
+
+var pub_key = "\
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA9dPzWGssue+hHW4AODSy\
+EEwiZIX4Q4TSb/DnwYXhTWYbD+IeL+UwvZA5yTUJzSZBIiHam7p6WRSlDbnm4tfI\
+QN6E56ZXm8N3g1in3UKx1LM2lO/Ia3EorCRWZbFYiTuR51JyJ9PTD9le7egz4Ng/\
+C68IMkxr509o2dAqYt/OOonoOVPxSqo3/NzS5qo3HTYKd9HQvALLRldAJ7qYS4Zy\
+6XIrL+b6iJC5DeLB0NeH2BxfIEu3v+lMuO2WezBGkyu/mIBsSQcvO4WvAG2mf9Yd\
+MJ+xXIqW3IY0Tbzs3To1h7WtktXO6aXa5MCbJMKtMOA7duCx/4wl3JA1DvFLt8OO\
+mQIDAQAB";
+
+var priv_key = "\
+MIIEpQIBAAKCAQEA9dPzWGssue+hHW4AODSyEEwiZIX4Q4TSb/DnwYXhTWYbD+Ie\
+L+UwvZA5yTUJzSZBIiHam7p6WRSlDbnm4tfIQN6E56ZXm8N3g1in3UKx1LM2lO/I\
+a3EorCRWZbFYiTuR51JyJ9PTD9le7egz4Ng/C68IMkxr509o2dAqYt/OOonoOVPx\
+Sqo3/NzS5qo3HTYKd9HQvALLRldAJ7qYS4Zy6XIrL+b6iJC5DeLB0NeH2BxfIEu3\
+v+lMuO2WezBGkyu/mIBsSQcvO4WvAG2mf9YdMJ+xXIqW3IY0Tbzs3To1h7WtktXO\
+6aXa5MCbJMKtMOA7duCx/4wl3JA1DvFLt8OOmQIDAQABAoIBAQCCX28OdICa99hl\
+qEIbjO7mr8oJr/dTr6x/S69Ntjgf+Ufe65gA5LctwcCz0hopn+EpPfUXZBWhCs7i\
+cbZelfwRUzH/PPv3kvneQfV85fM0D/uhj22mdbQRX5AmjKCc32fo25PJRZEJNcof\
+uGdTFryQ8LoTGu6bFUVRRxJDr9hKuHDC+psE+KOaPhGjFl9StNJCGuV9tWaRq3Jq\
+ad0oDL5vkD6JOtafT3K1AXPA1mctNvbpiIfre8gsZCo1K2/yBJK3C7D88OSAphI9\
+ruVz+HL8t5n/61oWBroA877OelA7uQGOlUzUbnf5UG5wrkfnpmqT0QZQ/EhUR8wX\
++8CmRlYFAoGBAP1xvoxE42Xz7aOInBLVQYU2UVSDlsRXjrSzsDm1mO63bDrtMWdW\
+9zDu1bInR6WsLgi8qjjnNx3CTTNfX63+V8Z03y4pBA5nRb18EeDhrtFsXX9ZcMJT\
+nwHXjZP3flHSXYr6712SP4vYGLwqPf+5MIrISU7nn9MAvYNAKEQ0o7hfAoGBAPhO\
+i3z2mzwqBa/xxq3rC/Fdt7qX/Tg4vU3yFx1lGmeyQe+/tmTEtXQzrEvIvv//PJCO\
+wIt2nOZgONq2mg/D6U4wxi4V+zySFt4FxnsvDd7vFYxaQNwLcwHhtvBo7Qxm7iMk\
+NIVCbZcXnM12eRhICXkWCMbbp6OHK9mp5n5ltPwHAoGBANUERB6LTAGF+wdHK77c\
+hPxdAhChpReTa/tPR9/JVSfW/N2uPKbZvlvfcbcSMrL5u5tWT1ASbg3SIKb8E2Qf\
+cVD5LBgVGzar8D7px/EWXqPgi9kcqJx8Qhn/PRzPmNlWkY7diFBCOqzkTS3h50hH\
+M5iB7LOoFHn5lk95nh5ti+nLAoGBAJGLCHvQ2KDlSLwejYQ3t6Jcemrm18fyihN8\
+CUxzjIynkbqDttdN7cYU27L4EexfoRJiej3E4qauU+TvD1KaVNA+CovM2pxgTQMK\
+g5KEvC6mGQ1RgZ75HwpFUUONXRTd6Eu01wwdKbtcXc6Y2NYAs3zEC5Tz/0j83BkT\
+W0VPPExVAoGABtqV3GpPwoez0ru0Zzn3BspUuTVI6MgVcFDveFwhEkM1oeyiFtRa\
+v2LUEqo1JI6/AQczD5me1nsX5q5Namer3Jbf0tE+n/GpX5GhjjqduXn1lClcYbZD\
+ifeH07bBDIOkkaJwqxHs3Y0IL8gderuG2Ps5gKqKy/vX7NaVW+d2AiM=";
+
 var rsa = new RSAKey();
-rsa.readPrivateKeyFromPEMString("MIGrAgEAAiEA2oyeEtkg/uWhB15lN+xN93OEcMOcbkk+V9yS9kgz4l8CAwEAAQIh\
-ALAFcYtcteaWrAtzS7Ku8FtP+CqD03kt0nrKLGBVY44BAhEA7fmn7by2KnjY5nCg\
-QqHgsQIRAOsaStVrBkGidPemvzzhOA8CED+jwgrLqpOVGbwWZmUrUSECEDe9ahSj\
-ZT5WeAjnPdv/Qb0CEQDYYWpU1WHug8luLiBvvk2I");
+rsa.readPrivateKeyFromPEMString(priv_key);
 
 // This is the entry point for ALL incoming messages.
 // The state machine decides what to do here.
@@ -146,13 +180,12 @@ function adb_process_incoming_msg(msg) {
   switch(msg.cmd) {
     case A_AUTH:
       if (msg.arg0 == 1) {
-        // data is a random token that the receipient (us) can sign with a 
+        // data is a random token that the receipient (us) can sign with a
         // private key. We'll sign and send back! This is a 256
-        var signed = rsa.signString(msg.body, "sha256");
-        adb_log("signed -> "+signed);
-        adb_queue_outgoing_msg(A_AUTH, 2, 0, signed);
+        //var signed = rsa.signString(msg.body, "sha256");
+        //adb_log("signed -> "+signed);
+        adb_queue_outgoing_msg(A_AUTH, 3, 0, pub_key);
 
-        // 97827d3a071b87b1fdd1e1c01e38f6d46530ac2e1253f1995ed3ec4dde01e029
       } else {
 
       }
@@ -169,7 +202,7 @@ function adb_queue_outgoing_msg(cmd, arg0, arg1, str) {
 
   msg.phase = 0;
 
-  chrome.usb.bulkTransfer(device.device, 
+  chrome.usb.bulkTransfer(device.device,
     {direction:'out', endpoint:0x03, data:msg.header}, function(ti) {
       //adb_log("sent header, "+ti.resultCode);
       chrome.usb.bulkTransfer(device.device,
@@ -216,7 +249,7 @@ function adb_pack_msg(cmd, arg0, arg1, str) {
  // the string must be interpreted as a string of bytes.
   var dump_msg = false;
 
-  if (dump_msg) 
+  if (dump_msg)
     adb_log(" ------ adb_write_msg ------");
 
    var payloadBuf = new ArrayBuffer(str.length+0);
@@ -227,7 +260,7 @@ function adb_pack_msg(cmd, arg0, arg1, str) {
    var crc = crc32(str);
 
   adb_log( "OUT cmd=0x"+cmd.toString(16)+", 0x"+arg0.toString(16)+", 0x"+arg1.toString(16)+", \""+str+"\"");
-  if (dump_msg) 
+  if (dump_msg)
     adb_log("pack, string is "+payloadBuf.byteLength+" bytes long  crc="+crc.toString(16)+" -> "+str);
 
   var endian = true;
