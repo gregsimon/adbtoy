@@ -37,16 +37,21 @@ var C_SM_SENT_CNXN = 3;
 var sm_msg = M_SM_IDLE;
 var sm_c = C_SM_DISCONNECTED;
 
-
+var console_element = undefined;
 function adb_log(str) {
   console.log(str);
+  if (console_element != undefined)
+    console_element.innerText += ("\n" + str);
 }
 
 function adb_driver_init(vendorId, productId) {
+  console_element = document.getElementById('console');
   // reset the state machines
   device = new Object();
   device.productId = productId;
   device.vendorId = vendorId;
+
+  auth_state = 0;
 
   sm_c = C_SM_DISCONNECTED;
 
@@ -108,18 +113,30 @@ function adb_driver_destroy() {
 // This is called when a message has finished being sent.
 // Use the SM to find out what to do next.
 function adb_msg_sent() {
+  adb_log("Starting to listen for a msg...");
   // actually, we'll just queue a listen here.
   chrome.usb.bulkTransfer(device.device,
     {direction:'in', endpoint:0x83, length:24}, function(uevent) {
       // we should have gotten the header.
-      //adb_log("get header  result="+uevent.resultCode+"... "+uevent.data.byteLength+"bytes");
+      adb_log("Got header? r="+uevent.resultCode+" "+uevent.data.byteLength+" bytes)");
+
+      // if we got less than 24 bytes, just bail
+      if (uevent.data.byteLength != 24) {
+        setTimeout(adb_msg_sent, 500);
+        return;
+      }
+
+      // parse the header into a new message object
       var msg = adb_unpack_msg_header(uevent.data);
 
-      // now phase 2 -- receive the bulk transfer for the boyd.
+      adb_log(" payload is next, and should be "+msg.bodySize+" bytes");
+
+      // now phase 2 -- receive the bulk transfer for the body.
       if (msg.bodySize > 0) {
         chrome.usb.bulkTransfer(device.device,
           {direction:'in', endpoint:0x83, length:msg.bodySize},
           function(uevent) {
+            adb_log("payload got "+uevent.data.byteLength+" bytes  r="+uevent.resultCode);
             msg.body = uevent.data;
             adb_process_incoming_msg(msg);
           });
@@ -141,7 +158,8 @@ QN6E56ZXm8N3g1in3UKx1LM2lO/Ia3EorCRWZbFYiTuR51JyJ9PTD9le7egz4Ng/\
 C68IMkxr509o2dAqYt/OOonoOVPxSqo3/NzS5qo3HTYKd9HQvALLRldAJ7qYS4Zy\
 6XIrL+b6iJC5DeLB0NeH2BxfIEu3v+lMuO2WezBGkyu/mIBsSQcvO4WvAG2mf9Yd\
 MJ+xXIqW3IY0Tbzs3To1h7WtktXO6aXa5MCbJMKtMOA7duCx/4wl3JA1DvFLt8OO\
-mQIDAQAB";
+mQIDAQAB\
+ unknown@chrome";
 
 var priv_key = "\
 MIIEpQIBAAKCAQEA9dPzWGssue+hHW4AODSyEEwiZIX4Q4TSb/DnwYXhTWYbD+Ie\
@@ -170,8 +188,30 @@ W0VPPExVAoGABtqV3GpPwoez0ru0Zzn3BspUuTVI6MgVcFDveFwhEkM1oeyiFtRa\
 v2LUEqo1JI6/AQczD5me1nsX5q5Namer3Jbf0tE+n/GpX5GhjjqduXn1lClcYbZD\
 ifeH07bBDIOkkaJwqxHs3Y0IL8gderuG2Ps5gKqKy/vX7NaVW+d2AiM=";
 
+/*
+  host                        device
+  -----------------------------------------------
+  CNXN host::
+
+                              AUTH 1 0  <20 byte data token #2>
+
+  AUTH 2 0 <256 bytes>
+
+                              AUTH 1 0  <20 byte data token #2>
+
+  AUTH 3 0 <717 bytes> (pub key)
+
+                              CNXN 
+
+                        complete!!
+  
+*/
+
 var rsa = new RSAKey();
 rsa.readPrivateKeyFromPEMString(priv_key);
+
+var device_keys = [];
+var auth_state =0;
 
 // This is the entry point for ALL incoming messages.
 // The state machine decides what to do here.
@@ -179,16 +219,12 @@ function adb_process_incoming_msg(msg) {
   adb_log("IN: "+msg.name+" arg0="+msg.arg0+" arg1="+msg.arg1);
   switch(msg.cmd) {
     case A_AUTH:
-      if (msg.arg0 == 1) {
-        // data is a random token that the receipient (us) can sign with a
-        // private key. We'll sign and send back! This is a 256
-        //var signed = rsa.signString(msg.body, "sha256");
-        //adb_log("signed -> "+signed);
-        adb_queue_outgoing_msg(A_AUTH, 3, 0, pub_key);
+      // AUTH challenge from device.
 
-      } else {
+      // TODO : If we already have a key we'd sign the token and
+      // return it.
 
-      }
+      adb_queue_outgoing_msg(A_AUTH, 3, 0, pub_key);
     break;
 
     default:
@@ -200,13 +236,14 @@ function adb_process_incoming_msg(msg) {
 function adb_queue_outgoing_msg(cmd, arg0, arg1, str) {
   var msg = adb_pack_msg(cmd, arg0, arg1, str);
 
-  msg.phase = 0;
-
   chrome.usb.bulkTransfer(device.device,
     {direction:'out', endpoint:0x03, data:msg.header}, function(ti) {
-      //adb_log("sent header, "+ti.resultCode);
+      adb_log("sent header, "+ti.resultCode+" "+msg.header.byteLength+" bytes");
       chrome.usb.bulkTransfer(device.device,
-        {direction:'out', endpoint:0x03, data:msg.body}, adb_msg_sent);
+        {direction:'out', endpoint:0x03, data:msg.body}, function(ti2) {
+          adb_log("sent body, "+ti2.resultCode+" "+msg.body.byteLength+" bytes");
+          adb_msg_sent();
+        })
     });
 
   //adb_log("msg packed, "+msg.header.byteLength+" bytes, "+msg.body.byteLength+" bytes");
@@ -234,11 +271,11 @@ function adb_unpack_msg_header(buffer) {
     m.name = "????";
   }
 
-  adb_log("unpacked: 0x"+m.cmd.toString(16)+
+  adb_log("adb_unpack_msg_header: 0x"+m.cmd.toString(16)+
     "("+m.name+
     ") 0x"+m.arg0.toString(16)+
     " 0x"+m.arg1.toString(16)+
-      "  data is "+m.bodySize+" bytes ...");
+      "  payload that follows is "+m.bodySize+" bytes ...");
 
   return m;
 }
@@ -250,18 +287,20 @@ function adb_pack_msg(cmd, arg0, arg1, str) {
   var dump_msg = false;
 
   if (dump_msg)
-    adb_log(" ------ adb_write_msg ------");
+    adb_log(" ------ adb_pack_msg ------");
 
-   var payloadBuf = new ArrayBuffer(str.length+0);
+   var payloadBuf = new ArrayBuffer(str.length+1);
    var sbufView = new Uint8Array(payloadBuf);
    for (var i=0, strLen=str.length; i<strLen; i++) {
      sbufView[i] = str.charCodeAt(i);
    }
+   sbufView[str.length] = 0; // null terminator
    var crc = crc32(str);
 
-  adb_log( "OUT cmd=0x"+cmd.toString(16)+", 0x"+arg0.toString(16)+", 0x"+arg1.toString(16)+", \""+str+"\"");
-  if (dump_msg)
-    adb_log("pack, string is "+payloadBuf.byteLength+" bytes long  crc="+crc.toString(16)+" -> "+str);
+  if (dump_msg) {
+    adb_log( "cmd=0x"+cmd.toString(16)+", 0x"+arg0.toString(16)+", 0x"+arg1.toString(16)+", \""+str+"\"");
+    adb_log(" PACKED string is "+payloadBuf.byteLength+" bytes long  crc="+crc.toString(16)+" -> "+str);
+  }
 
   var endian = true;
   var buffer = new ArrayBuffer(24);
@@ -274,7 +313,7 @@ function adb_pack_msg(cmd, arg0, arg1, str) {
   bufferView.setUint32(20, (cmd ^ 0xffffffff), endian);
 
   if (dump_msg)
-    adb_log("len="+buffer.byteLength+"  checksum="+bufferView.getUint32(20, endian).toString(16));
+    adb_log(" PACKED len="+buffer.byteLength+"  checksum="+bufferView.getUint32(20, endian).toString(16));
 
   m.header = buffer;
   m.body = payloadBuf;

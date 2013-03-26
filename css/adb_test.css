@@ -2,15 +2,16 @@
 	font-family:sans-serif;
 }
 
-#console {
-	width:100%;
-	height:500px;
-	font-family:Courier-New,Courier;
-}
-
 
 .button {
 	font-size:24pt;
 	font-weight:bold;
 	padding:10px;
 }
+
+#console {
+	width:100%;
+	height:800px;
+	white-space: nowrap;
+}
+
