@@ -3,7 +3,8 @@
 // TODO
 
 var requestButtonGN = document.getElementById("requestPermissionGN");
-var disconnectButton = document.getElementById("disconnect");
+var disconnectButton = document.getElementById("shell_button");
+var clearButton = document.getElementById("clear_button");
 
 
 requestButtonGN.addEventListener('click', function() {
@@ -11,8 +12,14 @@ requestButtonGN.addEventListener('click', function() {
 });
 
 disconnectButton.addEventListener('click', function() {
-	adb_driver_disconnect();
+//	adb_driver_destroy();
+	adb_driver_shell();
 });
+
+
+clearButton.addEventListener('click', function() {
+	document.getElementById('console').innerText = "";
+})
 
 
 

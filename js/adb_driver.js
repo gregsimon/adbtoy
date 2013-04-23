@@ -107,6 +107,13 @@ function adb_driver_init3() {
 
 }
 
+var __adb_task_id = 1;
+
+function adb_driver_shell(shellcmd) {
+  __adb_task_id++; // this should be unique
+  adb_queue_outgoing_msg(A_OPEN, 0, __adb_task_id, "shell:.");
+}
+
 function adb_driver_destroy() {
 }
 
@@ -216,7 +223,6 @@ var auth_state =0;
 // This is the entry point for ALL incoming messages.
 // The state machine decides what to do here.
 function adb_process_incoming_msg(msg) {
-  adb_log("IN: "+msg.name+" arg0="+msg.arg0+" arg1="+msg.arg1);
   switch(msg.cmd) {
     case A_AUTH:
       // AUTH challenge from device.
@@ -227,8 +233,27 @@ function adb_process_incoming_msg(msg) {
       adb_queue_outgoing_msg(A_AUTH, 3, 0, pub_key);
     break;
 
+    case A_CLSE:
+      adb_log("Closing request local-id="+msg.arg0+" remote-id="+msg.arg1);
+      break;
+
+    case A_CNXN:
+      device.description = ab2str(msg.body);
+      adb_log("** Connected ** "+device.description);
+      break;
+
+//    case A_SYNC:
+      break;
+
+    case A_WRTE:
+      adb_log("A_WRIT bytes="+msg.body.byteLength);
+      break;
+
+//    case A_OKAY:
+      break;
+
     default:
-    adb_log("UNHANDLED MESSAGE");
+      adb_log("(Unhandled) IN: "+msg.name+" arg0="+msg.arg0+" arg1="+msg.arg1);
   }
 }
 
@@ -238,10 +263,10 @@ function adb_queue_outgoing_msg(cmd, arg0, arg1, str) {
 
   chrome.usb.bulkTransfer(device.device,
     {direction:'out', endpoint:0x03, data:msg.header}, function(ti) {
-      adb_log("sent header, "+ti.resultCode+" "+msg.header.byteLength+" bytes");
+      //adb_log("sent header, "+ti.resultCode+" "+msg.header.byteLength+" bytes");
       chrome.usb.bulkTransfer(device.device,
         {direction:'out', endpoint:0x03, data:msg.body}, function(ti2) {
-          adb_log("sent body, "+ti2.resultCode+" "+msg.body.byteLength+" bytes");
+          //adb_log("sent body, "+ti2.resultCode+" "+msg.body.byteLength+" bytes");
           adb_msg_sent();
         })
     });
@@ -319,6 +344,12 @@ function adb_pack_msg(cmd, arg0, arg1, str) {
   m.body = payloadBuf;
 
   return m;
+}
+
+// ArrayBuffer utils
+
+function ab2str(buf) {
+  return String.fromCharCode.apply(null, new Uint8Array(buf));
 }
 
 
