@@ -12,7 +12,6 @@ requestButtonGN.addEventListener('click', function() {
 });
 
 disconnectButton.addEventListener('click', function() {
-//	adb_driver_destroy();
 	adb_driver_shell();
 });
 

@@ -15,27 +15,15 @@ var A_WRTE = 0x45545257;
 var A_AUTH = 0x48545541;
 
 
-// There are two state machines implemented here. One is for sending/receiving
-// the messages since there are multiple bulk transfers involved on each side.
-// The other state machine is for managing the connection with the remote
-// device (e.g.,  dealing with AUTH, etc.)
 
-// Message SM
-var M_SM_IDLE = 0;
-var M_SM_SENDING1 = 1;
-var M_SM_SENDING2 = 2;
-var M_SM_RECEIVING1 = 5;
-var M_SM_RECEIVING2 = 6;
-
-// connection SM
+// connection state machine
 var C_SM_DISCONNECTED = 0;
 var C_SM_CONNECTED_PENDING_INTERFACE = 1;
 var C_SM_CONNECTED = 2;
 var C_SM_SENT_CNXN = 3;
 
-
-var sm_msg = M_SM_IDLE;
 var sm_c = C_SM_DISCONNECTED;
+
 
 var console_element = undefined;
 function adb_log(str) {
@@ -44,6 +32,7 @@ function adb_log(str) {
     console_element.innerText += ("\n" + str);
 }
 
+// Entry point to the driver.
 function adb_driver_init(vendorId, productId) {
   console_element = document.getElementById('console');
   // reset the state machines
@@ -107,18 +96,20 @@ function adb_driver_init3() {
 
 }
 
+
 var __adb_task_id = 1;
 
+// TODO : Execute a shell command
 function adb_driver_shell(shellcmd) {
   __adb_task_id++; // this should be unique
   adb_queue_outgoing_msg(A_OPEN, 0, __adb_task_id, "shell:.");
 }
 
 function adb_driver_destroy() {
+  // TODO
 }
 
 // This is called when a message has finished being sent.
-// Use the SM to find out what to do next.
 function adb_msg_sent() {
   adb_log("Starting to listen for a msg...");
   // actually, we'll just queue a listen here.
@@ -155,7 +146,7 @@ function adb_msg_sent() {
     });
 }
 
-// TODO : move this somewhere
+// TODO : move this somewhere else
 // openssl genrsa -out mykey.pem 256
 
 var pub_key = "\
@@ -228,7 +219,7 @@ function adb_process_incoming_msg(msg) {
       // AUTH challenge from device.
 
       // TODO : If we already have a key we'd sign the token and
-      // return it.
+      // return it, avoiding the extra UI on device
 
       adb_queue_outgoing_msg(A_AUTH, 3, 0, pub_key);
     break;
@@ -243,35 +234,32 @@ function adb_process_incoming_msg(msg) {
       break;
 
 //    case A_SYNC:
-      break;
+//      break;
 
     case A_WRTE:
       adb_log("A_WRIT bytes="+msg.body.byteLength);
       break;
 
 //    case A_OKAY:
-      break;
+//      break;
 
     default:
       adb_log("(Unhandled) IN: "+msg.name+" arg0="+msg.arg0+" arg1="+msg.arg1);
   }
 }
 
-// Pack up a message and queue it for sending.
+// Pack up a message and send it out.
 function adb_queue_outgoing_msg(cmd, arg0, arg1, str) {
   var msg = adb_pack_msg(cmd, arg0, arg1, str);
 
   chrome.usb.bulkTransfer(device.device,
     {direction:'out', endpoint:0x03, data:msg.header}, function(ti) {
-      //adb_log("sent header, "+ti.resultCode+" "+msg.header.byteLength+" bytes");
       chrome.usb.bulkTransfer(device.device,
         {direction:'out', endpoint:0x03, data:msg.body}, function(ti2) {
-          //adb_log("sent body, "+ti2.resultCode+" "+msg.body.byteLength+" bytes");
           adb_msg_sent();
         })
     });
 
-  //adb_log("msg packed, "+msg.header.byteLength+" bytes, "+msg.body.byteLength+" bytes");
 }
 
 function adb_unpack_msg_header(buffer) {
